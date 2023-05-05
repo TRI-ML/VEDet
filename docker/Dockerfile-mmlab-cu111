@@ -1,0 +1,82 @@
+# Base image
+ARG PYTORCH="1.9.0"
+ARG CUDA="11.1"
+ARG CUDNN="8"
+
+FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
+
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
+ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
+ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
+
+# To fix GPG key error when running apt-get update
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
+
+# Core tools
+RUN apt-get update && apt-get install -y \
+    cmake \
+    curl \
+    docker.io \
+    ffmpeg \
+    git \
+    htop \
+    libsm6 \
+    libxext6 \
+    libglib2.0-0 \
+    libsm6 \
+    libxrender-dev \
+    libxext6 \
+    ninja-build \
+    unzip \
+    vim \
+    wget \
+    sudo \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# -------------------------
+# Optional: W&B credentials
+# -------------------------
+ARG WANDB_ENTITY
+ENV WANDB_ENTITY=${WANDB_ENTITY}
+
+ARG WANDB_API_KEY
+ENV WANDB_API_KEY=${WANDB_API_KEY}
+
+# Python tools
+RUN pip install \
+    wandb==0.12.17 \
+    einops==0.4.1 \
+    pytorch3d==0.3.0 \
+    pycocotools==2.0.4 \
+    nuscenes-devkit==1.1.7 \
+    timm==0.6.11
+
+# Install OpenMMLab packages
+ARG MMCV="1.4.0"
+ARG MMDET="v2.25.0"
+ARG MMSEG="v0.20.2"
+ARG MMDET3D="v0.17.1"
+ENV FORCE_CUDA="1"
+
+RUN pip install mmcv-full==${MMCV} -f https://download.openmmlab.com/mmcv/dist/cu111/torch1.9.0/index.html
+
+WORKDIR /workspace/mmlab
+RUN git clone https://github.com/open-mmlab/mmdetection.git && cd mmdetection && \
+    git checkout ${MMDET} && \
+    pip install -r requirements/build.txt && pip install -e .
+ENV PYTHONPATH="/workspace/mmlab/mmdetection:$PYTHONPATH"
+
+RUN git clone https://github.com/open-mmlab/mmsegmentation.git && cd mmsegmentation && \
+    git checkout ${MMSEG} && \
+    pip install -e .
+ENV PYTHONPATH="/workspace/mmlab/mmsegmentation:$PYTHONPATH"
+
+RUN git clone https://github.com/open-mmlab/mmdetection3d.git && cd mmdetection3d && \
+    git checkout ${MMDET3D} && \
+    pip install -e .
+ENV PYTHONPATH="/workspace/mmlab/mmdetection3d:$PYTHONPATH"
+
+WORKDIR /workspace/vedet
+RUN git config --global --add safe.directory /workspace/vedet
